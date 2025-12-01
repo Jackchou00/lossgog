@@ -25,11 +25,14 @@ loss-gog/
 │   ├── train_gog.py            # 训练 GOG 模型
 │   ├── build_lut.py            # 构建 3D LUT
 │   ├── train_size_experiment.py # 训练样本量实验
+│   ├── compare_gog_formulas.py # GOG 公式对比实验
 │   ├── apply_gog.py            # 应用 GOG 到图像
 │   ├── apply_lut.py            # 应用 LUT 到图像
 │   └── plot_gamut.py           # 绘制色域图
 │
 ├── measured_data/              # CS2000 测量数据
+├── xgimi_data/                 # XGIMI 投影仪测量数据
+├── xgimi_results/              # XGIMI 训练结果
 └── results/                    # 输出结果
 ```
 
@@ -73,7 +76,7 @@ GOG (Gain-Offset-Gamma) 模型是一种参数化的显示器色彩特性化模�
 **前向转换 (RGB → XYZ)：**
 
 $$
-L_c = \text{gain}_c \cdot (\text{RGB}_c + \text{offset}_c)^{\gamma_c}, \quad c \in \{R, G, B\}
+L_c = (\text{gain}_c \cdot \text{RGB}_c + \text{offset}_c)^{\gamma_c}, \quad c \in \{R, G, B\}
 $$
 
 $$
@@ -87,8 +90,21 @@ $$
 $$
 
 $$
-\text{RGB}_c = \left( \frac{L_c}{\text{gain}_c} \right)^{1/\gamma_c} - \text{offset}_c
+\text{RGB}_c = \frac{L_c^{1/\gamma_c} - \text{offset}_c}{\text{gain}_c}
 $$
+
+#### 参数物理意义
+
+| 参数       | 含义                                      |
+| ---------- | ----------------------------------------- |
+| **gain**   | 输入信号线性放大系数（在非线性变换之前）  |
+| **offset** | 黑电平偏移（黑场补偿）                    |
+| **gamma**  | 非线性幂指数（电光传递函数）              |
+| **matrix** | 3×3 色彩转换矩阵（RGB 基色到 XYZ 的映射） |
+
+> **注：** 本项目使用的是标准 GOG 公式 `L = (gain·RGB + offset)^γ`，其中 gain 在幂函数内部。
+> 另一种形式 `L = gain·(RGB + offset)^γ` 中 gain 在外部，会与矩阵 M 产生冗余。
+> 详见 `scripts/compare_gog_formulas.py` 的对比实验。
 
 #### 关键函数
 
@@ -268,6 +284,22 @@ R, G, B, X, Y, Z, 380nm, 381nm, ..., 780nm
 - 对比 XYZ MSE、CIEDE2000、sUCS 三种损失函数
 - 每个样本量重复 3 次取平均
 - 输出平均色差随样本量变化的曲线
+
+### GOG 公式对比实验 (`compare_gog_formulas.py`)
+
+对比两种 GOG 公式的拟合效果：
+
+| 公式         | 形式                        | 说明                        |
+| ------------ | --------------------------- | --------------------------- |
+| **标准形式** | `L = (gain·RGB + offset)^γ` | gain 在幂函数内部，参数独立 |
+| **旧形式**   | `L = gain·(RGB + offset)^γ` | gain 在外部，与矩阵 M 冗余  |
+
+**实验结论：**
+
+在 4 个数据集 × 3 种损失函数 = 12 组实验中：
+- 两种公式拟合精度几乎相同（差异 < 0.001 ΔE）
+- 原因：offset 值很小（≈0.001），此时两公式数学上等价
+- **推荐使用标准形式**：参数物理意义更清晰，与显示器信号链模型一致
 
 ---
 

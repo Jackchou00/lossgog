@@ -4,6 +4,10 @@ GOG (Gain-Offset-Gamma) display characterization model.
 This subpackage provides tools for building and using GOG models
 to characterize display color response.
 
+Standard GOG model formula:
+    L = (gain * RGB + offset)^gamma   (per-channel tone response)
+    XYZ = M @ L                        (3x3 matrix transform)
+
 Authors: Jack Chou
 Date: Nov 30, 2025
 """
