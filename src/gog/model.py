@@ -16,7 +16,7 @@ Date: Nov 30, 2025
 """
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, curve_fit
 
 from ucs import calculate_de2000, calculate_de_sucs
 
@@ -226,3 +226,152 @@ def make_gog(
         "gamma": gamma,
         "matrix": matrix,
     }
+
+
+def classic_gog(
+    rgb: np.ndarray,
+    xyz: np.ndarray,
+    ramp_indices: list = None,
+    verbose: bool = True,
+) -> dict:
+    """Build a classic per-channel GOG from primary ramps.
+
+    This function expects that the dataset contains per-channel ramps.
+    For each channel it fits a model:
+
+        L = (gain * input + offset)^gamma
+
+    using the measured luminance (Y component of XYZ). After fitting the
+    per-channel tone response (gain/offset/gamma) it constructs the 3x3
+    color transform matrix by taking the measured XYZ at the maximum input
+    for each primary and dividing by the corresponding L value.
+
+    Parameters:
+        rgb: (n,3) array of input RGB (normalized 0..1).
+        xyz: (n,3) array of measured XYZ (same scale as used elsewhere).
+        ramp_indices: Optional list of 3 tuples, each (start, end) specifying
+                      the index range for R, G, B ramps respectively.
+                      E.g., [(0, 18), (18, 36), (36, 54)] for 18 samples each.
+                      If None, auto-detect by finding samples where only one
+                      channel is non-zero (excluding black points).
+        verbose: print progress.
+
+    Returns:
+        GOG model dict with keys: 'gain','offset','gamma','matrix'.
+    """
+    # Ensure inputs are arrays
+    rgb = np.asarray(rgb, dtype=float)
+    xyz = np.asarray(xyz, dtype=float)
+
+    gains = np.zeros(3)
+    offsets = np.zeros(3)
+    gammas = np.ones(3) * 2.2
+    cols = []
+
+    for ch in range(3):
+        if ramp_indices is not None:
+            # Use explicit index range
+            start, end = ramp_indices[ch]
+            indices = np.arange(start, end)
+            inputs = rgb[indices, ch]
+            xyz_sel = xyz[indices, :]
+        else:
+            # Auto-detect: find samples where ONLY this channel is non-zero
+            # Exclude black (all zeros) by requiring this channel > 0
+            other1 = (ch + 1) % 3
+            other2 = (ch + 2) % 3
+            mask = (
+                (rgb[:, ch] > 1e-6)  # This channel must be positive (exclude black)
+                & np.isclose(rgb[:, other1], 0.0, atol=1e-6)
+                & np.isclose(rgb[:, other2], 0.0, atol=1e-6)
+            )
+            # Also include the black point (input=0) for fitting
+            # Find one black point where all channels are zero
+            black_mask = (
+                np.isclose(rgb[:, 0], 0.0, atol=1e-6)
+                & np.isclose(rgb[:, 1], 0.0, atol=1e-6)
+                & np.isclose(rgb[:, 2], 0.0, atol=1e-6)
+            )
+            # Take only the first black point to avoid duplicates
+            black_indices = np.where(black_mask)[0]
+            if len(black_indices) > 0:
+                # Combine: primary samples + one black point
+                primary_indices = np.where(mask)[0]
+                indices = np.concatenate([[black_indices[0]], primary_indices])
+            else:
+                indices = np.where(mask)[0]
+
+            inputs = rgb[indices, ch]
+            xyz_sel = xyz[indices, :]
+
+        if inputs.size < 4:
+            raise ValueError(f"Not enough ramp samples for channel {ch}: found {inputs.size}")
+
+        # Use Y (luminance) as the tone response measurement
+        Y = xyz_sel[:, 1]
+
+        # Sort by input
+        order = np.argsort(inputs)
+        inputs = inputs[order]
+        Y = Y[order]
+        xyz_sel_sorted = xyz_sel[order]
+
+        # Define model: L = (gain * x + offset)^gamma, fit Y = a * L
+        def _model(x, a, g, o, p):
+            lin = np.maximum(g * x + o, 0.0)
+            return a * np.power(lin, p)
+
+        # Initial guesses and bounds
+        p0 = [Y.max() if Y.max() > 0 else 1.0, 1.0, 0.001, 2.2]
+        lower = [1e-8, 0.1, -0.1, 1.0]
+        upper = [np.inf, 10.0, 0.5, 4.0]
+
+        try:
+            popt, _ = curve_fit(
+                _model,
+                inputs,
+                Y,
+                p0=p0,
+                bounds=(lower, upper),
+                maxfev=20000,
+            )
+        except Exception:
+            # Fallback to simple heuristic if fit fails
+            popt = np.array(p0)
+            if verbose:
+                print(f"Warning: curve_fit failed for channel {ch}, using fallback params")
+
+        a_ch, g_ch, o_ch, p_ch = popt
+        gains[ch] = float(g_ch)
+        offsets[ch] = float(o_ch)
+        gammas[ch] = float(p_ch)
+
+        # Find sample with maximum input (closest to 1.0)
+        idx_max = np.argmax(inputs)
+        input_max = float(inputs[idx_max])
+
+        # Get XYZ at max input
+        xyz_at_max = xyz_sel_sorted[idx_max]
+
+        L_at_max = np.power(max(g_ch * input_max + o_ch, 0.0), p_ch)
+        if L_at_max <= 0:
+            L_at_max = 1e-12
+
+        col = xyz_at_max / L_at_max
+        cols.append(col)
+
+        if verbose:
+            print(f"Channel {ch}: {len(inputs)} samples, "
+                  f"gain={g_ch:.4g}, offset={o_ch:.4g}, gamma={p_ch:.4g}")
+
+    # Assemble matrix with columns as primaries
+    matrix = np.column_stack(cols)
+
+    gog_model = {
+        "gain": gains,
+        "offset": offsets,
+        "gamma": gammas,
+        "matrix": matrix,
+    }
+
+    return gog_model
