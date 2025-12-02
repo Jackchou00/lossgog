@@ -106,7 +106,70 @@ $$
 > 另一种形式 `L = gain·(RGB + offset)^γ` 中 gain 在外部，会与矩阵 M 产生冗余。
 > 详见 `scripts/compare_gog_formulas.py` 的对比实验。
 
+#### 两种 GOG 构建方法
+
+本项目提供两种 GOG 模型构建方法：
+
+##### 1. 经典 GOG (`classic_gog`)
+
+从单通道原色 ramp 测量数据逐通道拟合，适用于有 R/G/B 单独灰阶测量的场景。
+
+**原理：**
+1. 对每个通道 c ∈ {R, G, B}，使用纯色 ramp 数据拟合 tone response：
+   $$L_c = (\text{gain}_c \cdot \text{input} + \text{offset}_c)^{\gamma_c}$$
+   其中 $L_c$ 归一化到 [0, 1]（基于亮度 Y 减去黑点后归一化）
+2. 矩阵 M 的列直接取各原色最大亮度时的 XYZ（减去黑点贡献）
+
+**优点：** 直观、物理意义明确、计算快速  
+**缺点：** 无法处理通道间串扰，对投影仪等复杂设备精度有限
+
+##### 2. 优化 GOG (`make_gog`)
+
+使用所有测量数据联合优化 18 个参数，支持多种损失函数。
+
+**原理：**
+1. 初始化参数（gain=1, offset=0.001, gamma=2.2, matrix=缩放单位阵）
+2. 使用 L-BFGS-B 优化器最小化预测 XYZ 与测量 XYZ 的误差
+3. 支持三种损失函数：XYZ MSE、CIEDE2000、sUCS
+
+**优点：** 精度高、能补偿通道间串扰  
+**缺点：** 需要更多测量数据、计算较慢
+
 #### 关键函数
+
+##### `classic_gog(rgb, xyz, ramp_indices=None, verbose=True)`
+
+从单通道原色 ramp 数据构建经典 GOG 模型。
+
+**参数：**
+- `rgb`: `(N, 3)` 数组，RGB 值，范围 [0, 1]
+- `xyz`: `(N, 3)` 数组，对应的 XYZ 三刺激值
+- `ramp_indices`: 可选，指定每个通道的数据索引范围
+  - 如 `[(0, 18), (18, 36), (36, 54)]` 表示 R/G/B 各 18 个样本
+  - 若为 None，自动检测单通道数据
+- `verbose`: 是否打印拟合过程
+
+**返回：**
+```python
+{
+    "gain": np.array([g_R, g_G, g_B]),
+    "offset": np.array([o_R, o_G, o_B]),
+    "gamma": np.array([γ_R, γ_G, γ_B]),
+    "matrix": np.array([[...], [...], [...]])  # 列为 R/G/B 原色 XYZ
+}
+```
+
+**示例：**
+```python
+from gog import classic_gog, rgb_to_xyz_gog
+
+# 从原色 ramp 构建经典 GOG
+ramp_indices = [(0, 18), (18, 36), (36, 54)]  # R/G/B 各 18 点
+gog_model = classic_gog(rgb_train, xyz_train, ramp_indices=ramp_indices)
+
+# 使用模型
+xyz_pred = rgb_to_xyz_gog(rgb_test, gog_model)
+```
 
 ##### `make_gog(rgb, xyz, mode="xyz", verbose=True)`
 
