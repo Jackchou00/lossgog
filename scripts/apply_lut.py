@@ -22,7 +22,7 @@ import numpy as np
 import colour
 from PIL import Image
 
-from lut import xyz_to_mid_space
+from loss_gog import xyz_to_mid_space
 
 
 # Display white point from measurements

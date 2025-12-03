@@ -17,8 +17,7 @@ Date: Nov 30, 2025
 
 import numpy as np
 from scipy.optimize import minimize, curve_fit
-
-from ucs import calculate_de2000, calculate_de_sucs
+from loss_gog.ucs import calculate_de2000, calculate_de_sucs
 
 
 # ==============================================================================
@@ -190,7 +189,7 @@ def make_gog(
         [(0.1, 10.0)] * 3
         +
         # offset bounds (3)
-        [(-0.1, 0.1)] * 3
+        [(-0.2, 0.2)] * 3
         +
         # gamma bounds (3)
         [(1.0, 4.0)] * 3

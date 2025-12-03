@@ -21,7 +21,7 @@ import numpy as np
 import colour
 from PIL import Image
 
-from gog import rgb_to_xyz_gog, xyz_to_rgb_gog
+from loss_gog import rgb_to_xyz_gog, xyz_to_rgb_gog
 
 
 def load_gog_model(model_path: str) -> dict:

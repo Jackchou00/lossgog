@@ -29,8 +29,7 @@ from scipy.optimize import minimize
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from data_io import read_cs2000_csv
-from ucs import calculate_de2000, calculate_de_sucs
+from loss_gog import read_cs2000_csv, calculate_de2000, calculate_de_sucs
 import colour
 
 

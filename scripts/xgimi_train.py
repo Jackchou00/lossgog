@@ -20,8 +20,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
-from gog import classic_gog, make_gog, evaluate_gog
-from plotting import plot_delta_e_histogram
+from loss_gog import classic_gog, make_gog, evaluate_gog, plot_delta_e_histogram
 
 
 def parse_xgimi_csv(csv_path: str, expected_samples: int = 96) -> dict:

@@ -14,9 +14,7 @@ Date: Dec 1, 2025
 import numpy as np
 import colour
 
-from data_io import read_cs2000_csv
-from lut import build_forward_lut, build_inverse_lut, evaluate_lut
-from plotting import plot_delta_e_histogram
+from loss_gog import read_cs2000_csv, build_forward_lut, build_inverse_lut, evaluate_lut, plot_delta_e_histogram
 
 
 # Display white point from measurements (RGB = 255, 255, 255)
