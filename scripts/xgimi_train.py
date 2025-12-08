@@ -16,89 +16,9 @@ Date: Dec 1, 2025
 import os
 import json
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.io import loadmat
 
-from loss_gog import classic_gog, make_gog, evaluate_gog, plot_delta_e_histogram
-
-
-def parse_xgimi_csv(csv_path: str, expected_samples: int = 96) -> dict:
-    """Parse the custom-format XGIMI CSV and return XYZ values.
-
-    The CSV contains x, y chromaticity and Lv luminance values.
-    XYZ is computed from these values.
-
-    Returns:
-        dict with 'XYZ' key containing (n_samples, 3) array.
-    """
-    df = pd.read_csv(csv_path, header=None, dtype=str)
-    first_col = df.iloc[:, 0].astype(str)
-
-    x_row = df[first_col == 'x']
-    y_row = df[first_col == 'y']
-    if x_row.empty or y_row.empty:
-        raise ValueError('Failed to locate x/y chromaticity rows in CSV')
-
-    x_idx = x_row.index[0]
-    y_idx = y_row.index[0]
-
-    lv_idx = df[first_col.str.startswith('Lv', na=False)].index
-    if lv_idx.empty:
-        raise ValueError('Failed to locate Lv row in CSV')
-    lv_idx = lv_idx[0]
-
-    def _row_values_as_float(row_index):
-        vals = df.loc[row_index].iloc[1:1 + expected_samples]
-        vals = pd.to_numeric(vals, errors='coerce').to_numpy(dtype=float)
-        return vals
-
-    x_vals = _row_values_as_float(x_idx)
-    y_vals = _row_values_as_float(y_idx)
-    Y_vals = _row_values_as_float(lv_idx)
-
-    # Convert xyY to XYZ
-    y_safe = np.where(y_vals == 0, 1e-12, y_vals)
-    X = x_vals * (Y_vals / y_safe)
-    Z = (1.0 - x_vals - y_vals) * (Y_vals / y_safe)
-    XYZ = np.stack([X, Y_vals, Z], axis=1)
-
-    return {'XYZ': XYZ}
-
-
-def load_rgb96(mat_path: str) -> np.ndarray:
-    """Load RGB values from .mat file.
-
-    Returns:
-        (96, 3) array with RGB values in [0, 1].
-    """
-    mat = loadmat(mat_path)
-    rgb = None
-    for k, v in mat.items():
-        if k.startswith('__'):
-            continue
-        if isinstance(v, np.ndarray):
-            if v.size == 0:
-                continue
-            if v.shape == (96, 3):
-                rgb = v.astype(float)
-                break
-            if v.shape == (3, 96):
-                rgb = v.T.astype(float)
-                break
-            if v.shape[0] == 96 and v.ndim == 2 and v.shape[1] >= 3:
-                rgb = v[:, :3].astype(float)
-                break
-
-    if rgb is None:
-        raise ValueError('Failed to find a 96x3 RGB array in mat file')
-
-    # Normalize if values are in 0-255 range
-    if rgb.max() > 1.5:
-        rgb = rgb / 255.0
-
-    return rgb
-
+from loss_gog import classic_gog, make_gog, evaluate_gog, plot_delta_e_histogram, read_cs2000_csv
 
 def plot_response_curves(gog_model: dict, out_path: str) -> None:
     """Plot GOG response curves.
@@ -132,8 +52,7 @@ def plot_response_curves(gog_model: dict, out_path: str) -> None:
 def main():
     repo_root = os.path.dirname(os.path.dirname(__file__))
     data_dir = os.path.join(repo_root, 'xgimi_data')
-    csv_path = os.path.join(data_dir, 'GOG_XGIMI.csv')
-    mat_path = os.path.join(data_dir, 'Rgb96.mat')
+    csv_path = os.path.join(data_dir, 'xgimi_96_gog.csv')
 
     out_dir = os.path.join(repo_root, 'xgimi_results')
 
@@ -149,13 +68,13 @@ def main():
 
     # Load data
     print('\nLoading data...')
-    parsed = parse_xgimi_csv(csv_path, expected_samples=96)
+    parsed = read_cs2000_csv(csv_path, spectral_length=771)
     XYZ_all = parsed['XYZ']
-    rgb96 = load_rgb96(mat_path)
+    rgb_all = parsed['RGB'] / 255.0  # Normalize RGB to [0, 1]
 
     # Prepare data
     n = 96
-    rgb_all = np.clip(rgb96[:n, :], 0.0, 1.0)
+    rgb_all = np.clip(rgb_all[:n, :], 0.0, 1.0)
 
     # Normalize XYZ by white point Y
     white_y = XYZ_all[:, 1].max()
