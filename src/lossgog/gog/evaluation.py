@@ -8,7 +8,7 @@ Date: Nov 30, 2025
 import numpy as np
 import colour
 
-from .model import rgb_to_xyz_gog
+from lossgog.model import rgb_to_xyz_gog
 
 
 def evaluate_gog(

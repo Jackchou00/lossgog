@@ -14,7 +14,13 @@ Date: Dec 1, 2025
 import numpy as np
 import colour
 
-from loss_gog import read_cs2000_csv, build_forward_lut, build_inverse_lut, evaluate_lut, plot_delta_e_histogram
+from lossgog import (
+    read_cs2000_csv,
+    build_forward_lut,
+    build_inverse_lut,
+    evaluate_lut,
+    plot_delta_e_histogram,
+)
 
 
 # Display white point from measurements (RGB = 255, 255, 255)
@@ -155,7 +161,12 @@ def main():
 
     interpolation_methods = [
         {"name": "Linear", "method": "linear"},
-        {"name": "RBF-TPS", "method": "rbf", "kernel": "thin_plate_spline", "smoothing": 0.0},
+        {
+            "name": "RBF-TPS",
+            "method": "rbf",
+            "kernel": "thin_plate_spline",
+            "smoothing": 0.0,
+        },
     ]
 
     build_and_save_inverse_luts(

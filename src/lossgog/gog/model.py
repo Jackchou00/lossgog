@@ -17,12 +17,13 @@ Date: Nov 30, 2025
 
 import numpy as np
 from scipy.optimize import minimize, curve_fit
-from loss_gog.ucs import calculate_de2000, calculate_de_sucs
+from lossgog.ucs import calculate_de2000, calculate_de_sucs
 
 
 # ==============================================================================
 # Parameter packing/unpacking utilities
 # ==============================================================================
+
 
 def _pack_params(
     gain: np.ndarray, offset: np.ndarray, gamma: np.ndarray, matrix: np.ndarray
@@ -43,6 +44,7 @@ def _unpack_params(params: np.ndarray) -> tuple:
 # ==============================================================================
 # Standard GOG Model: L = (gain * RGB + offset)^gamma
 # ==============================================================================
+
 
 def rgb_to_xyz_gog(rgb: np.ndarray, gog_model: dict) -> np.ndarray:
     """Convert RGB to XYZ using the GOG model.
@@ -296,7 +298,9 @@ def classic_gog(
             xyz_sel = xyz[indices, :]
 
         if inputs.size < 4:
-            raise ValueError(f"Not enough ramp samples for channel {ch}: found {inputs.size}")
+            raise ValueError(
+                f"Not enough ramp samples for channel {ch}: found {inputs.size}"
+            )
 
         # Sort by input
         order = np.argsort(inputs)
@@ -309,8 +313,8 @@ def classic_gog(
         # Normalize Y: L should go from ~0 to 1
         # Subtract black level and normalize by max
         Y_black = Y[0]  # Y at input=0 (black)
-        Y_max = Y[-1]   # Y at input=1 (max)
-        
+        Y_max = Y[-1]  # Y at input=1 (max)
+
         if Y_max - Y_black > 1e-10:
             L_measured = (Y - Y_black) / (Y_max - Y_black)
         else:
@@ -341,7 +345,9 @@ def classic_gog(
             g_ch, o_ch, p_ch = popt
         except Exception as e:
             if verbose:
-                print(f"Warning: curve_fit failed for channel {ch}: {e}, using fallback")
+                print(
+                    f"Warning: curve_fit failed for channel {ch}: {e}, using fallback"
+                )
             g_ch, o_ch, p_ch = 1.0, 0.001, 2.2
 
         gains[ch] = float(g_ch)
@@ -356,8 +362,10 @@ def classic_gog(
         primary_xyz.append(xyz_primary)
 
         if verbose:
-            print(f"Channel {ch}: {len(inputs)} samples, "
-                  f"gain={g_ch:.4g}, offset={o_ch:.4g}, gamma={p_ch:.4g}")
+            print(
+                f"Channel {ch}: {len(inputs)} samples, "
+                f"gain={g_ch:.4g}, offset={o_ch:.4g}, gamma={p_ch:.4g}"
+            )
 
     # Matrix: columns are the XYZ of each primary (R, G, B)
     # XYZ = M @ L, where L = [L_R, L_G, L_B]^T

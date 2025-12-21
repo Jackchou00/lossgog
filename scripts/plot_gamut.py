@@ -8,7 +8,7 @@ Authors: Jack Chou
 Date: Nov 30, 2025
 """
 
-from loss_gog import read_cs2000_csv, plot_chromaticity_diagram
+from lossgog import read_cs2000_csv, plot_chromaticity_diagram
 
 
 def main():

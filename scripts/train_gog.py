@@ -10,7 +10,7 @@ Date: Nov 30, 2025
 
 import numpy as np
 
-from loss_gog import read_cs2000_csv, make_gog, evaluate_gog, plot_delta_e_histogram
+from lossgog import read_cs2000_csv, make_gog, evaluate_gog, plot_delta_e_histogram
 
 
 # White point from measurements (D65 illuminant on display)

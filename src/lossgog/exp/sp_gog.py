@@ -16,7 +16,7 @@ These constraints mean slope and leakage are derived from (gain, offset, gamma, 
 
 Reduced parameter set (15 free parameters + d0):
     - 3 gain values (input linear scaling, one per RGB channel)
-    - 3 offset values (black level offset, one per RGB channel)  
+    - 3 offset values (black level offset, one per RGB channel)
     - 3 gamma values (non-linear power, one per RGB channel)
     - 9 matrix values (3x3 color transformation matrix)
     - d0: segmentation threshold (can be per-channel or shared)
@@ -29,48 +29,55 @@ Date: Dec 4, 2025
 
 import numpy as np
 from scipy.optimize import minimize
-from loss_gog.ucs import calculate_de2000, calculate_de_sucs
+from lossgog.ucs import calculate_de2000, calculate_de_sucs
 import colour
 
 
 # ==============================================================================
-# Parameter packing/unpacking utilities  
+# Parameter packing/unpacking utilities
 # ==============================================================================
 
-def _compute_slope_leakage(gain: np.ndarray, offset: np.ndarray, gamma: np.ndarray, d0: float) -> tuple:
+
+def _compute_slope_leakage(
+    gain: np.ndarray, offset: np.ndarray, gamma: np.ndarray, d0: float
+) -> tuple:
     """Compute slope and leakage from continuity constraints.
-    
+
     Given gain, offset, gamma and d0, compute slope and leakage such that:
     1. Value continuity: (gain * d0 + offset)^gamma = slope * d0 + leakage
     2. Slope continuity: gamma * gain * (gain * d0 + offset)^(gamma - 1) = slope
-    
+
     Parameters:
         gain: (3,) array
-        offset: (3,) array  
+        offset: (3,) array
         gamma: (3,) array
         d0: float, segmentation threshold
-        
+
     Returns:
         slope: (3,) array
         leakage: (3,) array
     """
     # Ensure numerical stability
     base = np.maximum(gain * d0 + offset, 1e-10)
-    
+
     # slope = gamma * gain * base^(gamma - 1)
     slope = gamma * gain * np.power(base, gamma - 1)
-    
+
     # leakage = base^gamma - slope * d0
     leakage = np.power(base, gamma) - slope * d0
-    
+
     return slope, leakage
 
 
 def _pack_params_reduced(
-    gain: np.ndarray, offset: np.ndarray, gamma: np.ndarray, matrix: np.ndarray, d0: float
+    gain: np.ndarray,
+    offset: np.ndarray,
+    gamma: np.ndarray,
+    matrix: np.ndarray,
+    d0: float,
 ) -> np.ndarray:
     """Pack reduced SPGOG parameters into a flat array for optimization.
-    
+
     Total 16 parameters: 3 gain + 3 offset + 3 gamma + 9 matrix + 1 d0
     """
     return np.concatenate([gain, offset, gamma, matrix.flatten(), [d0]])
@@ -115,7 +122,6 @@ def rgb_to_xyz_sp_gog(rgb: np.ndarray, sp_gog_model: dict) -> np.ndarray:
     matrix = sp_gog_model["matrix"]
     d0 = sp_gog_model.get("d0", 0.1)
 
-    
     # Compute slope and leakage from continuity constraints if not provided
     if "slope" in sp_gog_model and "leakage" in sp_gog_model:
         slope = sp_gog_model["slope"]
@@ -129,11 +135,11 @@ def rgb_to_xyz_sp_gog(rgb: np.ndarray, sp_gog_model: dict) -> np.ndarray:
     # Process each channel independently
     for ch in range(3):
         rgb_ch = rgb[:, ch]
-        
+
         # Dark Area: RGB <= D0
         dark_mask = rgb_ch <= d0
         L[dark_mask, ch] = slope[ch] * rgb_ch[dark_mask] + leakage[ch]
-        
+
         # Light Area: RGB > D0
         light_mask = ~dark_mask
         linear = gain[ch] * rgb_ch[light_mask] + offset[ch]
@@ -167,7 +173,7 @@ def xyz_to_rgb_sp_gog(xyz: np.ndarray, sp_gog_model: dict) -> np.ndarray:
     gamma = sp_gog_model["gamma"]
     matrix = sp_gog_model["matrix"]
     d0 = sp_gog_model.get("d0", 0.1)
-    
+
     # Compute slope and leakage from continuity constraints if not provided
     if "slope" in sp_gog_model and "leakage" in sp_gog_model:
         slope = sp_gog_model["slope"]
@@ -185,10 +191,10 @@ def xyz_to_rgb_sp_gog(xyz: np.ndarray, sp_gog_model: dict) -> np.ndarray:
     # Process each channel independently
     for ch in range(3):
         L_ch = L[:, ch]
-        
+
         # Calculate L threshold at D0
         L_threshold = slope[ch] * d0 + leakage[ch]
-        
+
         # Dark Area: L <= L_threshold
         dark_mask = L_ch <= L_threshold
         # Avoid division by zero
@@ -196,11 +202,13 @@ def xyz_to_rgb_sp_gog(xyz: np.ndarray, sp_gog_model: dict) -> np.ndarray:
             rgb[dark_mask, ch] = (L_ch[dark_mask] - leakage[ch]) / slope[ch]
         else:
             rgb[dark_mask, ch] = 0.0
-        
+
         # Light Area: L > L_threshold
         light_mask = ~dark_mask
         L_positive = np.maximum(L_ch[light_mask], 1e-10)
-        rgb[light_mask, ch] = (np.power(L_positive, 1.0 / gamma[ch]) - offset[ch]) / gain[ch]
+        rgb[light_mask, ch] = (
+            np.power(L_positive, 1.0 / gamma[ch]) - offset[ch]
+        ) / gain[ch]
 
     # Clamp to [0, 1] range
     # rgb = np.clip(rgb, 0.0, 1.0)
@@ -208,8 +216,11 @@ def xyz_to_rgb_sp_gog(xyz: np.ndarray, sp_gog_model: dict) -> np.ndarray:
 
 
 def _loss_function_reduced(
-    params: np.ndarray, rgb: np.ndarray, xyz_target: np.ndarray, mode: str = "xyz",
-    robust: bool = False
+    params: np.ndarray,
+    rgb: np.ndarray,
+    xyz_target: np.ndarray,
+    mode: str = "xyz",
+    robust: bool = False,
 ) -> float:
     """Compute loss between predicted and target XYZ values.
 
@@ -258,22 +269,24 @@ def _loss_function_reduced(
     return float(mse)
 
 
-def _black_point_constraint(params: np.ndarray, target_black_L: np.ndarray) -> np.ndarray:
+def _black_point_constraint(
+    params: np.ndarray, target_black_L: np.ndarray
+) -> np.ndarray:
     """Constraint to ensure L(RGB=0) matches target black level.
-    
+
     At RGB=0: L = leakage (from dark area formula)
     We want L(0) >= 0 or L(0) = target_black_L
-    
+
     Parameters:
         params: Flat array of reduced SPGOG parameters (16 values).
         target_black_L: Target L values at RGB=0, shape (3,).
-        
+
     Returns:
         Constraint values (should be >= 0 for inequality constraint).
     """
     gain, offset, gamma, matrix, d0 = _unpack_params_reduced(params)
     slope, leakage = _compute_slope_leakage(gain, offset, gamma, d0)
-    
+
     # L at RGB=0 is just leakage
     # We want leakage >= 0 (or close to target_black_L)
     return leakage - target_black_L
@@ -293,13 +306,13 @@ def make_sp_gog(
     SPGOG formula with automatic continuity:
         Light Area (RGB > D0): L = (gain * RGB + offset)^gamma
         Dark Area (RGB <= D0): L = slope * RGB + leakage
-    
+
     Continuity is enforced by computing slope and leakage from (gain, offset, gamma, d0):
         slope = gamma * gain * (gain * d0 + offset)^(gamma - 1)
         leakage = (gain * d0 + offset)^gamma - slope * d0
-    
+
     This reduces the free parameters from 24 to 16 (or 15 if d0 is fixed).
-    
+
     Key insight: At RGB=0, L = leakage = offset^gamma (when d0 is small)
     So offset >= 0 ensures L(0) >= 0.
 
@@ -326,11 +339,11 @@ def make_sp_gog(
     rgb_norm = np.linalg.norm(rgb, axis=1)
     black_idx = np.argmin(rgb_norm)
     black_xyz = xyz[black_idx]
-    
+
     if verbose:
         print(f"  Black point RGB: {rgb[black_idx]}")
         print(f"  Black point XYZ: {black_xyz}")
-    
+
     # Initial parameter estimates
     init_gain = np.array([1.0, 1.0, 1.0])
     # offset must be >= 0 to ensure L(0) = offset^gamma >= 0
@@ -341,21 +354,23 @@ def make_sp_gog(
     # Matrix: start with scaled identity to match XYZ range
     max_xyz = np.array([xyz[:, 0].max(), xyz[:, 1].max(), xyz[:, 2].max()])
     init_matrix = np.diag(max_xyz)
-    
+
     # Initial d0
     init_d0 = d0
 
     # Pack initial parameters
-    init_params = _pack_params_reduced(init_gain, init_offset, init_gamma, init_matrix, init_d0)
+    init_params = _pack_params_reduced(
+        init_gain, init_offset, init_gamma, init_matrix, init_d0
+    )
 
     # Parameter bounds
     max_val = xyz.max()
-    
+
     if train_d0:
         d0_bounds = [(0.0, 0.2)]  # d0 in reasonable range
     else:
         d0_bounds = [(d0, d0)]  # Fixed d0
-    
+
     bounds = (
         # gain bounds (3) - must be positive
         [(0.5, 3.0)] * 3
@@ -379,9 +394,11 @@ def make_sp_gog(
         print(f"  Initial D0: {init_d0:.4f}, trainable: {train_d0}")
         print(f"  Number of parameters: {len(init_params)}")
         print(f"  Robust loss: {robust}")
-        initial_loss = _loss_function_reduced(init_params, rgb, xyz, mode=mode, robust=robust)
+        initial_loss = _loss_function_reduced(
+            init_params, rgb, xyz, mode=mode, robust=robust
+        )
         print(f"  Initial loss: {initial_loss:.6f}")
-        
+
         # Check initial black point
         init_model = {
             "gain": init_gain,
@@ -412,10 +429,10 @@ def make_sp_gog(
 
     # Unpack optimized parameters
     gain, offset, gamma, matrix, d0_opt = _unpack_params_reduced(result.x)
-    
+
     # Compute derived parameters
     slope, leakage = _compute_slope_leakage(gain, offset, gamma, d0_opt)
-    
+
     model = {
         "gain": gain,
         "offset": offset,
@@ -425,7 +442,7 @@ def make_sp_gog(
         "matrix": matrix,
         "d0": d0_opt,
     }
-    
+
     if verbose:
         # Verify black point
         final_black_xyz = rgb_to_xyz_sp_gog(np.array([[0.0, 0.0, 0.0]]), model)[0]

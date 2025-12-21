@@ -1,39 +1,47 @@
-# Loss-GOG
+# Loss GOG
 
 基于感知色差损失函数的显示器色彩特性化模型研究。
 
-本项目实现了两种显示器色彩特性化方法：**GOG 模型**和 **3D LUT**，并研究了不同损失函数（XYZ MSE、CIEDE2000、sUCS）对模型精度的影响。
+本项目实现了一种显示器色彩特性化方法：**GOG 模型**，并研究了不同损失函数（XYZ MSE、CIEDE2000、sUCS）对模型精度的影响。
 
 ## 项目结构
 
 ```
-loss-gog/
-├── src/                        # 核心模块
-│   ├── gog/                    # GOG 模型
-│   │   ├── model.py            # 模型构建与转换
-│   │   └── evaluation.py       # 模型评估
-│   ├── lut/                    # 3D LUT
-│   │   ├── model.py            # LUT 构建
-│   │   └── evaluation.py       # LUT 评估
-│   ├── ucs/                    # 色差计算
-│   │   ├── de2000.py           # CIEDE2000 色差
-│   │   └── sucs.py             # sUCS 色差
-│   ├── data_io.py              # 数据读写
-│   └── plotting.py             # 可视化工具
+lossgog/
+├── src/
+│   └── lossgog/                # 核心模块
+│       ├── __init__.py
+│       ├── data_io.py          # 数据读写
+│       ├── plotting.py         # 可视化工具
+│       ├── gog/                # GOG 模型
+│       │   ├── __init__.py
+│       │   ├── model.py        # 模型构建与转换
+│       │   └── evaluation.py   # 模型评估
+│       ├── lut/                # 3D LUT
+│       │   ├── __init__.py
+│       │   ├── model.py        # LUT 构建
+│       │   └── evaluation.py   # LUT 评估
+│       ├── ucs/                # 色差计算
+│       │   ├── __init__.py
+│       │   ├── de2000.py       # CIEDE2000 色差
+│       │   └── sucs.py         # sUCS 色差
+│       └── exp/                # 实验模块
+│           └── sp_gog.py       
 │
 ├── scripts/                    # 可执行脚本
 │   ├── train_gog.py            # 训练 GOG 模型
+│   ├── train_sp_gog.py         # 训练稀疏 GOG
+│   ├── xgimi_train.py          # XGIMI 投影仪训练
 │   ├── build_lut.py            # 构建 3D LUT
 │   ├── train_size_experiment.py # 训练样本量实验
 │   ├── compare_gog_formulas.py # GOG 公式对比实验
+│   ├── gog_roundtrip_test.py   # GOG 往返测试
 │   ├── apply_gog.py            # 应用 GOG 到图像
 │   ├── apply_lut.py            # 应用 LUT 到图像
 │   └── plot_gamut.py           # 绘制色域图
 │
-├── measured_data/              # CS2000 测量数据
-├── xgimi_data/                 # XGIMI 投影仪测量数据
-├── xgimi_results/              # XGIMI 训练结果
-└── results/                    # 输出结果
+├── pyproject.toml              # 项目配置
+└── README.md                   # 本文档
 ```
 
 ## 安装
@@ -43,24 +51,23 @@ loss-gog/
 ```bash
 # 克隆项目
 git clone <repo-url>
-cd loss-gog
+cd lossgog
 
 # 创建虚拟环境并安装依赖
-uv venv
-uv pip install -e .
+uv sync
 ```
 
 ## 快速开始
 
 ```bash
 # 训练 GOG 模型
-python scripts/train_gog.py
+uv run scripts/train_gog.py
 
 # 构建 3D LUT
-python scripts/build_lut.py
+uv run scripts/build_lut.py
 
 # 运行训练样本量实验
-python scripts/train_size_experiment.py
+uv run scripts/train_size_experiment.py
 ```
 
 ---
@@ -161,7 +168,7 @@ $$
 
 **示例：**
 ```python
-from gog import classic_gog, rgb_to_xyz_gog
+from lossgog.gog import classic_gog, rgb_to_xyz_gog
 
 # 从原色 ramp 构建经典 GOG
 ramp_indices = [(0, 18), (18, 36), (36, 54)]  # R/G/B 各 18 点
@@ -196,7 +203,7 @@ xyz_pred = rgb_to_xyz_gog(rgb_test, gog_model)
 
 **示例：**
 ```python
-from gog import make_gog, rgb_to_xyz_gog
+from lossgog.gog import make_gog, rgb_to_xyz_gog
 
 # 训练模型
 gog_model = make_gog(rgb_train, xyz_train, mode="de2000")
@@ -249,7 +256,7 @@ $$
 
 **示例：**
 ```python
-from lut import build_forward_lut
+from lossgog.lut import build_forward_lut
 import colour
 
 # 从 15³ 测量点构建 17³ LUT
@@ -276,7 +283,7 @@ colour.write_LUT(lut, "output.cube")
 
 **使用逆向 LUT：**
 ```python
-from lut import build_inverse_lut, xyz_to_mid_space
+from lossgog.lut import build_inverse_lut, xyz_to_mid_space
 
 # 构建 LUT
 lut_data = build_inverse_lut(xyz, rgb, white_Y, method="rbf")
@@ -366,17 +373,6 @@ R, G, B, X, Y, Z, 380nm, 381nm, ..., 780nm
 
 ---
 
-## 依赖
-
-- Python ≥ 3.13
-- numpy
-- scipy
-- pandas
-- matplotlib
-- colour-science
-
----
-
 ## 许可证
 
 MIT License
@@ -385,11 +381,4 @@ MIT License
 
 ## 作者
 
-Jack Chou
-
-## 参考文献
-
-- IEC 61966-2-1: sRGB 标准
-- ITU-R BT.2020: 超高清电视色域
-- ITU-R BT.1886: 显示器 EOTF
-- CIE 142-2001: CIEDE2000 色差公式
+Miaosen Zhou

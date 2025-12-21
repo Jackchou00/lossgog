@@ -17,7 +17,12 @@ Date: Nov 30, 2025
 import time
 import numpy as np
 
-from loss_gog import read_cs2000_csv, make_gog, evaluate_gog, plot_training_size_comparison
+from lossgog import (
+    read_cs2000_csv,
+    make_gog,
+    evaluate_gog,
+    plot_training_size_comparison,
+)
 
 
 # White point from measurements (D65 illuminant on display)

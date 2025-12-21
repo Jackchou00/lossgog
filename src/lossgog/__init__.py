@@ -1,5 +1,5 @@
 """
-loss_gog: Display Color Characterization Toolkit
+lossgog: Display Color Characterization Toolkit
 
 This package provides tools for display color characterization, including:
 - GOG (Gain-Offset-Gamma) model training and evaluation
@@ -51,27 +51,23 @@ from .ucs import (
 __all__ = [
     # Data I/O
     "read_cs2000_csv",
-    
     # Plotting
     "plot_delta_e_histogram",
-    "plot_chromaticity_diagram", 
+    "plot_chromaticity_diagram",
     "plot_training_size_comparison",
     "plot_rgb_cube",
-    
     # GOG model
     "make_gog",
     "rgb_to_xyz_gog",
     "xyz_to_rgb_gog",
     "classic_gog",
     "evaluate_gog",
-    
     # LUT utilities
     "build_forward_lut",
     "build_inverse_lut",
     "xyz_to_mid_space",
     "mid_space_to_xyz",
     "evaluate_lut",
-    
     # Color difference metrics
     "calculate_de2000",
     "calculate_de_sucs",

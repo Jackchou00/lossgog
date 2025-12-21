@@ -14,7 +14,7 @@ Date: Dec 16, 2025
 import os
 import numpy as np
 from scipy.io import loadmat
-from loss_gog import xyz_to_rgb_gog
+from lossgog import xyz_to_rgb_gog
 
 
 def load_gog_model(model_path: str) -> dict:
