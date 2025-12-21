@@ -103,8 +103,8 @@ def xyz_to_rgb_gog(xyz: np.ndarray, gog_model: dict) -> np.ndarray:
     L_positive = np.maximum(L, 0.0)
     rgb = (np.power(L_positive, 1.0 / gamma) - offset) / gain
 
-    # Clamp to [0, 1] range
-    rgb = np.clip(rgb, 0.0, 1.0)
+    # Clamp to [0, inf)
+    rgb = np.clip(rgb, 0.0, np.inf)
     return rgb
 
 
