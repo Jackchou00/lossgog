@@ -1,8 +1,8 @@
 # Loss GOG
 
-基于感知色差损失函数的显示器色彩特性化模型研究。
+基于感知色差损失函数的显示器特性化模型研究。
 
-本项目实现了一种显示器色彩特性化方法：**GOG 模型**，并研究了不同损失函数（XYZ MSE、CIEDE2000、sUCS）对模型精度的影响。
+本项目实现了一种显示器特性化方法：**GOG 模型**，并研究了不同损失函数（XYZ MSE、CIEDE2000、sUCS）对模型精度的影响。
 
 ## 项目结构
 
@@ -30,18 +30,15 @@ lossgog/
 │
 ├── scripts/                    # 可执行脚本
 │   ├── train_gog.py            # 训练 GOG 模型
-│   ├── train_sp_gog.py         # 训练稀疏 GOG
-│   ├── xgimi_train.py          # XGIMI 投影仪训练
 │   ├── build_lut.py            # 构建 3D LUT
 │   ├── train_size_experiment.py # 训练样本量实验
-│   ├── compare_gog_formulas.py # GOG 公式对比实验
 │   ├── gog_roundtrip_test.py   # GOG 往返测试
 │   ├── apply_gog.py            # 应用 GOG 到图像
 │   ├── apply_lut.py            # 应用 LUT 到图像
 │   └── plot_gamut.py           # 绘制色域图
 │
 ├── pyproject.toml              # 项目配置
-└── README.md                   # 本文档
+└── README.md                   
 ```
 
 ## 安装
@@ -109,10 +106,6 @@ $$
 | **gamma**  | 非线性幂指数（电光传递函数）              |
 | **matrix** | 3×3 色彩转换矩阵（RGB 基色到 XYZ 的映射） |
 
-> **注：** 本项目使用的是标准 GOG 公式 `L = (gain·RGB + offset)^γ`，其中 gain 在幂函数内部。
-> 另一种形式 `L = gain·(RGB + offset)^γ` 中 gain 在外部，会与矩阵 M 产生冗余。
-> 详见 `scripts/compare_gog_formulas.py` 的对比实验。
-
 #### 两种 GOG 构建方法
 
 本项目提供两种 GOG 模型构建方法：
@@ -127,9 +120,6 @@ $$
    其中 $L_c$ 归一化到 [0, 1]（基于亮度 Y 减去黑点后归一化）
 2. 矩阵 M 的列直接取各原色最大亮度时的 XYZ（减去黑点贡献）
 
-**优点：** 直观、物理意义明确、计算快速  
-**缺点：** 无法处理通道间串扰，对投影仪等复杂设备精度有限
-
 ##### 2. 优化 GOG (`make_gog`)
 
 使用所有测量数据联合优化 18 个参数，支持多种损失函数。
@@ -137,10 +127,7 @@ $$
 **原理：**
 1. 初始化参数（gain=1, offset=0.001, gamma=2.2, matrix=缩放单位阵）
 2. 使用 L-BFGS-B 优化器最小化预测 XYZ 与测量 XYZ 的误差
-3. 支持三种损失函数：XYZ MSE、CIEDE2000、sUCS
-
-**优点：** 精度高、能补偿通道间串扰  
-**缺点：** 需要更多测量数据、计算较慢
+3. 支持三种损失函数：XYZ MSE、CIEDE2000、sUCS  
 
 #### 关键函数
 
@@ -318,7 +305,7 @@ display_rgb = inverse_lut.apply(mid)
 
 #### `calculate_de_sucs(xyz_pred, xyz_target)`
 
-计算 sUCS (Simplified Uniform Color Space) 色差，比 CIEDE2000 计算更快。
+计算 sUCS (Simple Uniform Color Space) 色差，比 CIEDE2000 计算更快。
 
 ---
 
@@ -354,23 +341,6 @@ R, G, B, X, Y, Z, 380nm, 381nm, ..., 780nm
 - 对比 XYZ MSE、CIEDE2000、sUCS 三种损失函数
 - 每个样本量重复 3 次取平均
 - 输出平均色差随样本量变化的曲线
-
-### GOG 公式对比实验 (`compare_gog_formulas.py`)
-
-对比两种 GOG 公式的拟合效果：
-
-| 公式         | 形式                        | 说明                        |
-| ------------ | --------------------------- | --------------------------- |
-| **标准形式** | `L = (gain·RGB + offset)^γ` | gain 在幂函数内部，参数独立 |
-| **旧形式**   | `L = gain·(RGB + offset)^γ` | gain 在外部，与矩阵 M 冗余  |
-
-**实验结论：**
-
-在 4 个数据集 × 3 种损失函数 = 12 组实验中：
-- 两种公式拟合精度几乎相同（差异 < 0.001 ΔE）
-- 原因：offset 值很小（≈0.001），此时两公式数学上等价
-- **推荐使用标准形式**：参数物理意义更清晰，与显示器信号链模型一致
-
 ---
 
 ## 许可证
