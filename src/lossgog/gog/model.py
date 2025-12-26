@@ -1,18 +1,20 @@
-"""
-GOG (Gain-Offset-Gamma) model core implementation.
+"""GOG (Gain-Offset-Gamma) model core implementation.
 
 Standard GOG model formula:
     L = (gain * RGB + offset)^gamma   (per-channel tone response)
     XYZ = M @ L                        (3x3 matrix transform)
 
-Total 18 parameters:
-    - 3 gain values (input linear scaling, one per RGB channel)
-    - 3 offset values (black level offset, one per RGB channel)
-    - 3 gamma values (non-linear power, one per RGB channel)
-    - 9 matrix values (3x3 color transformation matrix)
+This implementation uses a unit-white constraint during optimization:
+    For each channel, enforce L(1) = 1.
+    (gain + offset)^gamma = 1  ->  gain + offset = 1  (assuming gain+offset > 0)
+    Therefore, offset is derived and not independently optimized:
+        offset = 1 - gain
+
+Model is still returned as a dict with 18 values (gain/offset/gamma/matrix),
+but only 15 degrees of freedom are optimized (gain, gamma, matrix).
 
 Authors: Jack Chou
-Date: Nov 30, 2025
+Date: Dec 26, 2025
 """
 
 import numpy as np
@@ -21,23 +23,34 @@ from lossgog.ucs import calculate_de2000, calculate_de_sucs
 
 
 # ==============================================================================
-# Parameter packing/unpacking utilities
+# Parameter packing/unpacking utilities (unit-white constrained)
 # ==============================================================================
 
 
-def _pack_params(
-    gain: np.ndarray, offset: np.ndarray, gamma: np.ndarray, matrix: np.ndarray
+def _pack_params_unit_white(
+    gain: np.ndarray, gamma: np.ndarray, matrix: np.ndarray
 ) -> np.ndarray:
-    """Pack GOG parameters into a flat array for optimization."""
-    return np.concatenate([gain, offset, gamma, matrix.flatten()])
+    """Pack GOG parameters for the unit-white constrained variant.
+
+    This variant enforces per-channel L(1) = 1, i.e.
+        (gain + offset)^gamma = 1  ->  gain + offset = 1 (assuming gain+offset>0)
+    so offset is not optimized and is derived as:
+        offset = 1 - gain
+
+    Total 15 parameters:
+        - 3 gain
+        - 3 gamma
+        - 9 matrix
+    """
+    return np.concatenate([gain, gamma, matrix.flatten()])
 
 
-def _unpack_params(params: np.ndarray) -> tuple:
-    """Unpack flat parameter array into GOG components."""
+def _unpack_params_unit_white(params: np.ndarray) -> tuple:
+    """Unpack 15-parameter unit-white constrained GOG parameters."""
     gain = params[0:3]
-    offset = params[3:6]
-    gamma = params[6:9]
-    matrix = params[9:18].reshape(3, 3)
+    gamma = params[3:6]
+    matrix = params[6:15].reshape(3, 3)
+    offset = 1.0 - gain
     return gain, offset, gamma, matrix
 
 
@@ -110,21 +123,11 @@ def xyz_to_rgb_gog(xyz: np.ndarray, gog_model: dict) -> np.ndarray:
     return rgb
 
 
-def _loss_function(
+def _loss_function_unit_white(
     params: np.ndarray, rgb: np.ndarray, xyz_target: np.ndarray, mode: str = "xyz"
 ) -> float:
-    """Compute loss between predicted and target XYZ values.
-
-    Parameters:
-        params: Flat array of GOG parameters (18 values).
-        rgb: Training RGB values, shape (n, 3).
-        xyz_target: Target XYZ values, shape (n, 3).
-        mode: Loss mode - "xyz", "de2000", or "sucs".
-
-    Returns:
-        Loss value (MSE or mean squared Delta E).
-    """
-    gain, offset, gamma, matrix = _unpack_params(params)
+    """Loss for the unit-white constrained GOG variant (15 parameters)."""
+    gain, offset, gamma, matrix = _unpack_params_unit_white(params)
 
     gog_model = {
         "gain": gain,
@@ -159,6 +162,10 @@ def make_gog(
 
     Standard GOG formula: L = (gain * RGB + offset)^gamma
 
+    Optimization uses a unit-white constraint per channel:
+        L(1) = 1  =>  offset = 1 - gain
+    so only 15 degrees of freedom are optimized (gain, gamma, matrix).
+
     Parameters:
         rgb: Array of shape (n_samples, 3), RGB values in [0, 1].
         xyz: Array of shape (n_samples, 3), corresponding XYZ values.
@@ -174,24 +181,20 @@ def make_gog(
     """
     # Initial parameter estimates
     init_gain = np.array([1.0, 1.0, 1.0])
-    init_offset = np.array([0.001, 0.001, 0.001])
     init_gamma = np.array([2.2, 2.2, 2.2])
 
     # Matrix: start with scaled identity to match XYZ range
     max_xyz = np.array([xyz[:, 0].max(), xyz[:, 1].max(), xyz[:, 2].max()])
     init_matrix = np.diag(max_xyz)
 
-    # Pack initial parameters
-    init_params = _pack_params(init_gain, init_offset, init_gamma, init_matrix)
+    # Pack initial parameters (15 DoF)
+    init_params = _pack_params_unit_white(init_gain, init_gamma, init_matrix)
 
     # Parameter bounds
     max_val = xyz.max()
     bounds = (
-        # gain bounds (3)
-        [(0.1, 10.0)] * 3
-        +
-        # offset bounds (3)
-        [(-0.2, 0.2)] * 3
+        # gain bounds (3): equivalent to old offset bounds (-0.2..0.2) under offset=1-gain
+        [(0.8, 1.2)] * 3
         +
         # gamma bounds (3)
         [(1.0, 4.0)] * 3
@@ -201,12 +204,17 @@ def make_gog(
     )
 
     if verbose:
-        print("Optimizing GOG model: L = (gain*RGB + offset)^gamma")
-        print(f"  Initial MSE: {_loss_function(init_params, rgb, xyz, mode=mode):.4f}")
+        print(
+            "Optimizing GOG model (unit-white): L(1)=1, offset=1-gain; "
+            "L = (gain*RGB + offset)^gamma"
+        )
+        print(
+            f"  Initial MSE: {_loss_function_unit_white(init_params, rgb, xyz, mode=mode):.4f}"
+        )
 
     # Run optimization
     result = minimize(
-        _loss_function,
+        _loss_function_unit_white,
         init_params,
         args=(rgb, xyz, mode),
         method="L-BFGS-B",
@@ -219,7 +227,7 @@ def make_gog(
         print(f"  Optimization success: {result.success}")
 
     # Unpack optimized parameters
-    gain, offset, gamma, matrix = _unpack_params(result.x)
+    gain, offset, gamma, matrix = _unpack_params_unit_white(result.x)
 
     return {
         "gain": gain,
