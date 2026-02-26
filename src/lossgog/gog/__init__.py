@@ -7,9 +7,6 @@ to characterize display color response.
 Standard GOG model formula:
     L = (gain * RGB + offset)^gamma   (per-channel tone response)
     XYZ = M @ L                        (3x3 matrix transform)
-
-Authors: Jack Chou
-Date: Nov 30, 2025
 """
 
 from .model import make_gog, rgb_to_xyz_gog, xyz_to_rgb_gog, classic_gog

@@ -1,8 +1,5 @@
 """
 GOG model evaluation functions.
-
-Authors: Jack Chou
-Date: Nov 30, 2025
 """
 
 import numpy as np

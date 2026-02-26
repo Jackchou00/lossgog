@@ -12,9 +12,6 @@ This implementation uses a unit-white constraint during optimization:
 
 Model is still returned as a dict with 18 values (gain/offset/gamma/matrix),
 but only 15 degrees of freedom are optimized (gain, gamma, matrix).
-
-Authors: Jack Chou
-Date: Dec 26, 2025
 """
 
 import numpy as np
