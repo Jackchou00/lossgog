@@ -24,10 +24,10 @@ def _f(t: np.ndarray) -> np.ndarray:
 
 def _xyz_to_lab(xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Convert XYZ (0-1 range) to CIELAB.
-    
+
     Parameters:
         xyz: Array of shape (n, 3), XYZ values in range 0-1.
-        
+
     Returns:
         Tuple of (L, a, b) arrays, each of shape (n,).
     """
@@ -63,7 +63,7 @@ def calculate_de2000(
     """
     # Step 1: XYZ (D65) -> CIELAB
     L1, a1, b1 = _xyz_to_lab(xyz_target)  # Reference/target
-    L2, a2, b2 = _xyz_to_lab(xyz_pred)    # Sample/predicted
+    L2, a2, b2 = _xyz_to_lab(xyz_pred)  # Sample/predicted
 
     # Step 2: Calculate CIEDE2000 (Vectorized)
 

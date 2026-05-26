@@ -274,7 +274,7 @@ def make_gog(
     # Detect and subtract black point if correction is requested
     xyz_black = None
     if correct_black:
-        black_idx = np.argmin(np.sum(rgb ** 2, axis=1))
+        black_idx = np.argmin(np.sum(rgb**2, axis=1))
         if not np.allclose(rgb[black_idx], 0.0, atol=1e-3):
             raise ValueError(
                 "Black point RGB=[0,0,0] not found in training data. "
@@ -307,21 +307,15 @@ def make_gog(
     max_val = xyz.max()
     if constrain_white:
         init_params = _pack_params_white_constrained(init_gain, init_gamma, init_matrix)
-        bounds = (
-            [(0.8, 1.2)] * 3
-            + [(1.0, 4.0)] * 3
-            + [(-2 * max_val, 2 * max_val)] * 6
-        )
+        bounds = [(0.8, 1.2)] * 3 + [(1.0, 4.0)] * 3 + [(-2 * max_val, 2 * max_val)] * 6
         loss_func = _loss_function_white_constrained
         loss_args = (rgb, xyz, white_xyz, mode)
-        init_loss = _loss_function_white_constrained(init_params, rgb, xyz, white_xyz, mode=mode)
+        init_loss = _loss_function_white_constrained(
+            init_params, rgb, xyz, white_xyz, mode=mode
+        )
     else:
         init_params = _pack_params_unit_white(init_gain, init_gamma, init_matrix)
-        bounds = (
-            [(0.8, 1.2)] * 3
-            + [(1.0, 4.0)] * 3
-            + [(-2 * max_val, 2 * max_val)] * 9
-        )
+        bounds = [(0.8, 1.2)] * 3 + [(1.0, 4.0)] * 3 + [(-2 * max_val, 2 * max_val)] * 9
         loss_func = _loss_function_unit_white
         loss_args = (rgb, xyz, mode)
         init_loss = _loss_function_unit_white(init_params, rgb, xyz, mode=mode)
@@ -352,7 +346,9 @@ def make_gog(
 
     # Unpack optimized parameters
     if constrain_white:
-        gain, offset, gamma, matrix = _unpack_params_white_constrained(result.x, white_xyz)
+        gain, offset, gamma, matrix = _unpack_params_white_constrained(
+            result.x, white_xyz
+        )
     else:
         gain, offset, gamma, matrix = _unpack_params_unit_white(result.x)
 

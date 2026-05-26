@@ -9,7 +9,6 @@ Date: Nov 30, 2025
 """
 
 import numpy as np
-import rich
 
 from data_io import read_cs2000_csv
 from lossgog import classic_gog, evaluate_gog, make_gog, rgb_to_xyz_gog
@@ -86,11 +85,19 @@ def main():
         val_metrics = evaluate_gog(model, test_rgb, test_xyz)
 
         # Grayscale points (R == G == B)
-        train_gray_mask = np.isclose(train_rgb[:, 0], train_rgb[:, 1]) & np.isclose(train_rgb[:, 1], train_rgb[:, 2])
-        val_gray_mask = np.isclose(test_rgb[:, 0], test_rgb[:, 1]) & np.isclose(test_rgb[:, 1], test_rgb[:, 2])
+        train_gray_mask = np.isclose(train_rgb[:, 0], train_rgb[:, 1]) & np.isclose(
+            train_rgb[:, 1], train_rgb[:, 2]
+        )
+        val_gray_mask = np.isclose(test_rgb[:, 0], test_rgb[:, 1]) & np.isclose(
+            test_rgb[:, 1], test_rgb[:, 2]
+        )
 
-        train_gray_metrics = evaluate_gog(model, train_rgb[train_gray_mask], train_xyz[train_gray_mask])
-        val_gray_metrics = evaluate_gog(model, test_rgb[val_gray_mask], test_xyz[val_gray_mask])
+        train_gray_metrics = evaluate_gog(
+            model, train_rgb[train_gray_mask], train_xyz[train_gray_mask]
+        )
+        val_gray_metrics = evaluate_gog(
+            model, test_rgb[val_gray_mask], test_xyz[val_gray_mask]
+        )
 
         # Predict white point at RGB = [1, 1, 1]
         pred_white = rgb_to_xyz_gog(np.array([[1.0, 1.0, 1.0]]), model)[0]
@@ -98,10 +105,18 @@ def main():
         white_err_pct = (white_err / target_white) * 100.0
 
         print(f"\n[{name}] Evaluation:")
-        print(f"  Training Set (3375 pts):  Mean ΔE = {train_metrics['mean_delta_e']:.3f}, Max ΔE = {train_metrics['max_delta_e']:.3f}")
-        print(f"  Validation Set (216 pts): Mean ΔE = {val_metrics['mean_delta_e']:.3f}, Max ΔE = {val_metrics['max_delta_e']:.3f}")
-        print(f"  Training Gray (15 pts):   Mean ΔE = {train_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {train_gray_metrics['max_delta_e']:.3f}")
-        print(f"  Validation Gray (6 pts):  Mean ΔE = {val_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {val_gray_metrics['max_delta_e']:.3f}")
+        print(
+            f"  Training Set (3375 pts):  Mean ΔE = {train_metrics['mean_delta_e']:.3f}, Max ΔE = {train_metrics['max_delta_e']:.3f}"
+        )
+        print(
+            f"  Validation Set (216 pts): Mean ΔE = {val_metrics['mean_delta_e']:.3f}, Max ΔE = {val_metrics['max_delta_e']:.3f}"
+        )
+        print(
+            f"  Training Gray (15 pts):   Mean ΔE = {train_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {train_gray_metrics['max_delta_e']:.3f}"
+        )
+        print(
+            f"  Validation Gray (6 pts):  Mean ΔE = {val_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {val_gray_metrics['max_delta_e']:.3f}"
+        )
         print(f"  White Point Prediction:  {pred_white}")
         print(f"  White Point Target:      {target_white}")
         print(f"  White Point Error:       {white_err} (Pct Err: {white_err_pct}%)")

@@ -12,8 +12,6 @@ Authors: Jack Chou
 Date: Dec 3, 2025
 """
 
-
-
 # Plotting utilities
 from .plotting import (
     plot_delta_e_histogram,
@@ -48,7 +46,6 @@ from .ucs import (
 )
 
 __all__ = [
-
     # Plotting
     "plot_delta_e_histogram",
     "plot_chromaticity_diagram",

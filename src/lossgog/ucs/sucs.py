@@ -12,17 +12,21 @@ import numpy as np
 
 
 # sUCS transformation matrices
-M_XYZ_TO_LMS = np.array([
-    [0.4002, 0.7075, -0.0807],
-    [-0.2280, 1.1500, 0.0612],
-    [0.0, 0.0, 0.9184],
-])
+M_XYZ_TO_LMS = np.array(
+    [
+        [0.4002, 0.7075, -0.0807],
+        [-0.2280, 1.1500, 0.0612],
+        [0.0, 0.0, 0.9184],
+    ]
+)
 
-M_LMS_TO_IAB = np.array([
-    [200 / 3.05, 100 / 3.05, 5 / 3.05],
-    [430, -470, 40],
-    [49, 49, -98],
-])
+M_LMS_TO_IAB = np.array(
+    [
+        [200 / 3.05, 100 / 3.05, 5 / 3.05],
+        [430, -470, 40],
+        [49, 49, -98],
+    ]
+)
 
 # Pre-computed constants and transposed matrices for optimization
 _M_XYZ_TO_LMS_T = M_XYZ_TO_LMS.T
