@@ -17,8 +17,8 @@ Date: Nov 30, 2025
 import time
 import numpy as np
 
+from data_io import read_cs2000_csv
 from lossgog import (
-    read_cs2000_csv,
     make_gog,
     evaluate_gog,
     plot_training_size_comparison,
@@ -107,8 +107,8 @@ def main():
     np.random.seed(42)
 
     # --- Load datasets ---
-    large_file = "measured_data/cs2000_lut_measurements_20251124_163713.csv"
-    small_file = "measured_data/cs2000_lut_measurements_20251124_194618.csv"
+    large_file = "measured_data/xdr/cs2000_lut_measurements_20251124_163713.csv"
+    small_file = "measured_data/xdr/cs2000_lut_measurements_20251124_194618.csv"
 
     large_data = read_cs2000_csv(large_file)
     small_data = read_cs2000_csv(small_file)

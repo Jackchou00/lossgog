@@ -8,14 +8,16 @@ Authors: Jack Chou
 Date: Nov 30, 2025
 """
 
+import numpy as np
 import rich
 
-from lossgog import classic_gog, evaluate_gog, make_gog, read_cs2000_csv
+from data_io import read_cs2000_csv
+from lossgog import classic_gog, evaluate_gog, make_gog, rgb_to_xyz_gog
 
 
 def main():
-    measured_data_path = "/Users/jackchou/Desktop/data/raw/lossgog_data/xdr/cs2000_lut_measurements_20251124_163713.csv"
-    test_data_path = "/Users/jackchou/Desktop/data/raw/lossgog_data/xdr/cs2000_lut_measurements_20251124_194618.csv"
+    measured_data_path = "measured_data/xdr/cs2000_lut_measurements_20251124_163713.csv"
+    test_data_path = "measured_data/xdr/cs2000_lut_measurements_20251124_194618.csv"
     # --- Load measured data ---
     print("Loading Measured Data")
     train_data = read_cs2000_csv(measured_data_path)
@@ -45,40 +47,68 @@ def main():
     test_rgb = test_rgb_values
     test_xyz = test_xyz_values / white_xyz[1]
 
-    # --- Build GOG Model ---
-    print("Building GOG Model (RGB -> XYZ)")
-
+    # --- Build GOG Models ---
     mode = "de2000"  # Options: "xyz", "de2000", "sucs"
-    gog_model = make_gog(
+
+    print("\n" + "=" * 60)
+    print("1. Building GOG Model (Unconstrained)")
+    print("=" * 60)
+    gog_unconstrained = make_gog(
         train_rgb,
         train_xyz,
         mode=mode,
+        constrain_white=False,
         verbose=True,
     )
 
-    # Print model parameters
-    print("\nGOG Model Parameters:")
-    rich.print(gog_model)
+    print("\n" + "=" * 60)
+    print("2. Building GOG Model (Strict White Point Constrained)")
+    print("=" * 60)
+    gog_constrained = make_gog(
+        train_rgb,
+        train_xyz,
+        mode=mode,
+        constrain_white=True,
+        verbose=True,
+    )
 
-    # --- Evaluate on training set ---
-    train_metrics = evaluate_gog(gog_model, train_rgb, train_xyz)
-    print(f"\nTraining set (large, {train_rgb.shape[0]} points):")
-    print(f"  Mean Delta E: {train_metrics['mean_delta_e']:.2f}")
-    print(f"  Max Delta E: {train_metrics['max_delta_e']:.2f}")
+    # --- Classic GOG ---
+    print("\n" + "=" * 60)
+    print("3. Building Classic GOG Model")
+    print("=" * 60)
+    gog_classic = classic_gog(rgb_values, xyz_values, verbose=True)
 
-    # --- Evaluate on validation set ---
-    val_metrics = evaluate_gog(gog_model, test_rgb, test_xyz)
-    print(f"\nValidation set (small, {test_rgb.shape[0]} points):")
-    print(f"  Mean Delta E: {val_metrics['mean_delta_e']:.2f}")
-    print(f"  Max Delta E: {val_metrics['max_delta_e']:.2f}")
+    # --- Evaluations ---
+    target_white = white_xyz / white_xyz[1]
 
-    # --- classic GOG ---
-    print("\nBuilding Classic GOG Model (RGB -> XYZ)")
-    classic_gog_model = classic_gog(rgb_values, xyz_values)
-    classic_metrics = evaluate_gog(classic_gog_model, test_rgb, test_xyz)
-    print("\nClassic GOG Validation set:")
-    print(f"  Mean Delta E: {classic_metrics['mean_delta_e']:.3f}")
-    print(f"  Max Delta E: {classic_metrics['max_delta_e']:.3f}")
+    def evaluate_and_print(name, model):
+        train_metrics = evaluate_gog(model, train_rgb, train_xyz)
+        val_metrics = evaluate_gog(model, test_rgb, test_xyz)
+
+        # Grayscale points (R == G == B)
+        train_gray_mask = np.isclose(train_rgb[:, 0], train_rgb[:, 1]) & np.isclose(train_rgb[:, 1], train_rgb[:, 2])
+        val_gray_mask = np.isclose(test_rgb[:, 0], test_rgb[:, 1]) & np.isclose(test_rgb[:, 1], test_rgb[:, 2])
+
+        train_gray_metrics = evaluate_gog(model, train_rgb[train_gray_mask], train_xyz[train_gray_mask])
+        val_gray_metrics = evaluate_gog(model, test_rgb[val_gray_mask], test_xyz[val_gray_mask])
+
+        # Predict white point at RGB = [1, 1, 1]
+        pred_white = rgb_to_xyz_gog(np.array([[1.0, 1.0, 1.0]]), model)[0]
+        white_err = pred_white - target_white
+        white_err_pct = (white_err / target_white) * 100.0
+
+        print(f"\n[{name}] Evaluation:")
+        print(f"  Training Set (3375 pts):  Mean ΔE = {train_metrics['mean_delta_e']:.3f}, Max ΔE = {train_metrics['max_delta_e']:.3f}")
+        print(f"  Validation Set (216 pts): Mean ΔE = {val_metrics['mean_delta_e']:.3f}, Max ΔE = {val_metrics['max_delta_e']:.3f}")
+        print(f"  Training Gray (15 pts):   Mean ΔE = {train_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {train_gray_metrics['max_delta_e']:.3f}")
+        print(f"  Validation Gray (6 pts):  Mean ΔE = {val_gray_metrics['mean_delta_e']:.3f}, Max ΔE = {val_gray_metrics['max_delta_e']:.3f}")
+        print(f"  White Point Prediction:  {pred_white}")
+        print(f"  White Point Target:      {target_white}")
+        print(f"  White Point Error:       {white_err} (Pct Err: {white_err_pct}%)")
+
+    evaluate_and_print("Unconstrained GOG", gog_unconstrained)
+    evaluate_and_print("Constrained GOG", gog_constrained)
+    evaluate_and_print("Classic GOG", gog_classic)
 
 
 if __name__ == "__main__":

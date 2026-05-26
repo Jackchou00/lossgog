@@ -12,8 +12,7 @@ Authors: Jack Chou
 Date: Dec 3, 2025
 """
 
-# Data I/O
-from .data_io import read_cs2000_csv
+
 
 # Plotting utilities
 from .plotting import (
@@ -49,8 +48,7 @@ from .ucs import (
 )
 
 __all__ = [
-    # Data I/O
-    "read_cs2000_csv",
+
     # Plotting
     "plot_delta_e_histogram",
     "plot_chromaticity_diagram",

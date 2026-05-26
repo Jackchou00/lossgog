@@ -14,8 +14,8 @@ Date: Dec 1, 2025
 import numpy as np
 import colour
 
+from data_io import read_cs2000_csv
 from lossgog import (
-    read_cs2000_csv,
     build_forward_lut,
     build_inverse_lut,
     evaluate_lut,
@@ -125,8 +125,8 @@ def build_and_save_inverse_luts(
 
 def main():
     # --- Load datasets ---
-    large_file = "measured_data/cs2000_lut_measurements_20251124_163713.csv"
-    small_file = "measured_data/cs2000_lut_measurements_20251124_194618.csv"
+    large_file = "measured_data/xdr/cs2000_lut_measurements_20251124_163713.csv"
+    small_file = "measured_data/xdr/cs2000_lut_measurements_20251124_194618.csv"
 
     large_data = read_cs2000_csv(large_file)
     small_data = read_cs2000_csv(small_file)

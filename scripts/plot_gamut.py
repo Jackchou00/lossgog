@@ -8,12 +8,13 @@ Authors: Jack Chou
 Date: Nov 30, 2025
 """
 
-from lossgog import read_cs2000_csv, plot_chromaticity_diagram
+from data_io import read_cs2000_csv
+from lossgog import plot_chromaticity_diagram
 
 
 def main():
     # --- Load dataset ---
-    large_file = "measured_data/cs2000_lut_measurements_20251124_163713.csv"
+    large_file = "measured_data/xdr/cs2000_lut_measurements_20251124_163713.csv"
     large_data = read_cs2000_csv(large_file)
     large_xyz = large_data["XYZ"]
     print(f"Dataset: {large_xyz.shape[0]} points")

@@ -51,6 +51,41 @@ def _unpack_params_unit_white(params: np.ndarray) -> tuple:
     return gain, offset, gamma, matrix
 
 
+def _pack_params_white_constrained(
+    gain: np.ndarray, gamma: np.ndarray, matrix: np.ndarray
+) -> np.ndarray:
+    """Pack GOG parameters for unit-white + white-point constrained variant.
+
+    This variant enforces:
+    1. L(1) = 1  =>  offset = 1 - gain
+    2. XYZ(1,1,1) = WhitePoint  =>  M @ [1,1,1]^T = WhitePoint
+       so M[:, 2] = WhitePoint - M[:, 0] - M[:, 1]
+
+    Total 12 parameters:
+        - 3 gain
+        - 3 gamma
+        - 6 matrix (first two columns, flattened)
+    """
+    return np.concatenate([gain, gamma, matrix[:, 0:2].flatten()])
+
+
+def _unpack_params_white_constrained(
+    params: np.ndarray, white_xyz: np.ndarray
+) -> tuple:
+    """Unpack 12-parameter white constrained GOG parameters."""
+    gain = params[0:3]
+    gamma = params[3:6]
+    m_cols = params[6:12].reshape(3, 2)
+
+    # Reconstruct 3x3 matrix using white point constraint
+    matrix = np.zeros((3, 3))
+    matrix[:, 0:2] = m_cols
+    matrix[:, 2] = white_xyz - m_cols[:, 0] - m_cols[:, 1]
+
+    offset = 1.0 - gain
+    return gain, offset, gamma, matrix
+
+
 # ==============================================================================
 # Standard GOG Model: L = (gain * RGB + offset)^gamma
 # ==============================================================================
@@ -61,7 +96,7 @@ def rgb_to_xyz_gog(rgb: np.ndarray, gog_model: dict) -> np.ndarray:
 
     Standard GOG model formula:
         L = (gain * RGB + offset)^gamma  (per-channel)
-        XYZ = M @ L
+        XYZ = M @ L + XYZ_black          (additive black correction)
 
     Parameters:
         rgb: Array of shape (n_samples, 3), RGB values in [0, 1].
@@ -70,6 +105,7 @@ def rgb_to_xyz_gog(rgb: np.ndarray, gog_model: dict) -> np.ndarray:
             - "offset": (3,) array - black level offset
             - "gamma": (3,) array - non-linear power
             - "matrix": (3, 3) array - color transform
+            - "xyz_black": (3,) array - optional additive black level
 
     Returns:
         XYZ values, array of shape (n_samples, 3).
@@ -78,6 +114,7 @@ def rgb_to_xyz_gog(rgb: np.ndarray, gog_model: dict) -> np.ndarray:
     offset = gog_model["offset"]
     gamma = gog_model["gamma"]
     matrix = gog_model["matrix"]
+    xyz_black = gog_model.get("xyz_black", None)
 
     # Standard GOG: L = (gain * RGB + offset)^gamma
     linear = np.maximum(gain * rgb + offset, 0.0)
@@ -85,6 +122,11 @@ def rgb_to_xyz_gog(rgb: np.ndarray, gog_model: dict) -> np.ndarray:
 
     # Apply 3x3 matrix transform: XYZ = L @ M.T (for row vectors)
     xyz = L @ matrix.T
+
+    # Additive black correction if present
+    if xyz_black is not None:
+        xyz = xyz + xyz_black
+
     return xyz
 
 
@@ -92,7 +134,8 @@ def xyz_to_rgb_gog(xyz: np.ndarray, gog_model: dict) -> np.ndarray:
     """Convert XYZ to RGB using the inverse GOG model.
 
     Inverse GOG model formula:
-        L = M^(-1) @ XYZ
+        XYZ' = XYZ - XYZ_black
+        L = M^(-1) @ XYZ'
         RGB = (L^(1/gamma) - offset) / gain
 
     Parameters:
@@ -106,6 +149,12 @@ def xyz_to_rgb_gog(xyz: np.ndarray, gog_model: dict) -> np.ndarray:
     offset = gog_model["offset"]
     gamma = gog_model["gamma"]
     matrix = gog_model["matrix"]
+    xyz_black = gog_model.get("xyz_black", None)
+
+    # Subtract black level if present
+    if xyz_black is not None:
+        # Avoid modifying the original array if it was passed by reference
+        xyz = xyz - xyz_black
 
     # Inverse matrix transform
     matrix_inv = np.linalg.inv(matrix)
@@ -149,10 +198,45 @@ def _loss_function_unit_white(
     return float(mse)
 
 
+def _loss_function_white_constrained(
+    params: np.ndarray,
+    rgb: np.ndarray,
+    xyz_target: np.ndarray,
+    white_xyz: np.ndarray,
+    mode: str = "xyz",
+) -> float:
+    """Loss for the unit-white + white-point constrained GOG variant (12 parameters)."""
+    gain, offset, gamma, matrix = _unpack_params_white_constrained(params, white_xyz)
+
+    gog_model = {
+        "gain": gain,
+        "offset": offset,
+        "gamma": gamma,
+        "matrix": matrix,
+    }
+
+    xyz_pred = rgb_to_xyz_gog(rgb, gog_model)
+
+    if mode == "xyz":
+        mse = np.mean((xyz_pred - xyz_target) ** 2)
+    elif mode == "de2000":
+        delta_e = calculate_de2000(xyz_pred, xyz_target)
+        mse = np.mean(delta_e**2)
+    elif mode == "sucs":
+        delta_e = calculate_de_sucs(xyz_pred, xyz_target)
+        mse = np.mean(delta_e**2)
+    else:
+        raise ValueError(f"Unknown loss mode: {mode}")
+
+    return float(mse)
+
+
 def make_gog(
     rgb: np.ndarray,
     xyz: np.ndarray,
     mode: str = "xyz",
+    constrain_white: bool = True,
+    correct_black: bool = False,
     verbose: bool = True,
 ) -> dict:
     """Create a GOG model from RGB and XYZ measurements using optimization.
@@ -163,10 +247,20 @@ def make_gog(
         L(1) = 1  =>  offset = 1 - gain
     so only 15 degrees of freedom are optimized (gain, gamma, matrix).
 
+    Optionally, a strict white-point constraint is applied:
+        XYZ(1,1,1) = WhitePoint  =>  M @ [1,1,1]^T = WhitePoint
+    reducing optimized degrees of freedom to 12.
+
+    Optionally, a black level correction is applied:
+        XYZ' = XYZ - XYZ_black
+    subtracting the black level before optimization.
+
     Parameters:
         rgb: Array of shape (n_samples, 3), RGB values in [0, 1].
         xyz: Array of shape (n_samples, 3), corresponding XYZ values.
         mode: Loss mode for optimization - "xyz", "de2000", or "sucs".
+        constrain_white: Whether to enforce strict white point constraint.
+        correct_black: Whether to subtract black level before optimization.
         verbose: Whether to print optimization progress.
 
     Returns:
@@ -175,7 +269,32 @@ def make_gog(
             - "offset": array of shape (3,), black level offset.
             - "gamma": array of shape (3,), non-linear power.
             - "matrix": array of shape (3, 3), color transformation matrix.
+            - "xyz_black": array of shape (3,), optional black level offset.
     """
+    # Detect and subtract black point if correction is requested
+    xyz_black = None
+    if correct_black:
+        black_idx = np.argmin(np.sum(rgb ** 2, axis=1))
+        if not np.allclose(rgb[black_idx], 0.0, atol=1e-3):
+            raise ValueError(
+                "Black point RGB=[0,0,0] not found in training data. "
+                "Cannot apply black level correction."
+            )
+        xyz_black = xyz[black_idx]
+        # Subtract black level for optimization (returns a copy)
+        xyz = xyz - xyz_black
+
+    # Detect white point if constraint is requested
+    white_xyz = None
+    if constrain_white:
+        white_idx = np.argmin(np.sum((rgb - 1.0) ** 2, axis=1))
+        if not np.allclose(rgb[white_idx], 1.0, atol=1e-3):
+            raise ValueError(
+                "White point RGB=[1,1,1] not found in training data. "
+                "Cannot apply white point constraint."
+            )
+        white_xyz = xyz[white_idx]
+
     # Initial parameter estimates
     init_gain = np.array([1.0, 1.0, 1.0])
     init_gamma = np.array([2.2, 2.2, 2.2])
@@ -184,36 +303,44 @@ def make_gog(
     max_xyz = np.array([xyz[:, 0].max(), xyz[:, 1].max(), xyz[:, 2].max()])
     init_matrix = np.diag(max_xyz)
 
-    # Pack initial parameters (15 DoF)
-    init_params = _pack_params_unit_white(init_gain, init_gamma, init_matrix)
-
-    # Parameter bounds
+    # Pack initial parameters and setup bounds
     max_val = xyz.max()
-    bounds = (
-        # gain bounds (3): equivalent to old offset bounds (-0.2..0.2) under offset=1-gain
-        [(0.8, 1.2)] * 3
-        +
-        # gamma bounds (3)
-        [(1.0, 4.0)] * 3
-        +
-        # matrix bounds (9)
-        [(-2 * max_val, 2 * max_val)] * 9
-    )
+    if constrain_white:
+        init_params = _pack_params_white_constrained(init_gain, init_gamma, init_matrix)
+        bounds = (
+            [(0.8, 1.2)] * 3
+            + [(1.0, 4.0)] * 3
+            + [(-2 * max_val, 2 * max_val)] * 6
+        )
+        loss_func = _loss_function_white_constrained
+        loss_args = (rgb, xyz, white_xyz, mode)
+        init_loss = _loss_function_white_constrained(init_params, rgb, xyz, white_xyz, mode=mode)
+    else:
+        init_params = _pack_params_unit_white(init_gain, init_gamma, init_matrix)
+        bounds = (
+            [(0.8, 1.2)] * 3
+            + [(1.0, 4.0)] * 3
+            + [(-2 * max_val, 2 * max_val)] * 9
+        )
+        loss_func = _loss_function_unit_white
+        loss_args = (rgb, xyz, mode)
+        init_loss = _loss_function_unit_white(init_params, rgb, xyz, mode=mode)
 
     if verbose:
-        print(
-            "Optimizing GOG model (unit-white): L(1)=1, offset=1-gain; "
-            "L = (gain*RGB + offset)^gamma"
-        )
-        print(
-            f"  Initial MSE: {_loss_function_unit_white(init_params, rgb, xyz, mode=mode):.4f}"
-        )
+        msg = []
+        if constrain_white:
+            msg.append("white-point constrained")
+        if correct_black:
+            msg.append("black-corrected")
+        msg_str = " + ".join(msg) if msg else "standard"
+        print(f"Optimizing GOG model ({msg_str}): L(1)=1, offset=1-gain")
+        print(f"  Initial MSE: {init_loss:.4f}")
 
     # Run optimization
     result = minimize(
-        _loss_function_unit_white,
+        loss_func,
         init_params,
-        args=(rgb, xyz, mode),
+        args=loss_args,
         method="L-BFGS-B",
         bounds=bounds,
         options={"maxiter": 5000},
@@ -224,14 +351,21 @@ def make_gog(
         print(f"  Optimization success: {result.success}")
 
     # Unpack optimized parameters
-    gain, offset, gamma, matrix = _unpack_params_unit_white(result.x)
+    if constrain_white:
+        gain, offset, gamma, matrix = _unpack_params_white_constrained(result.x, white_xyz)
+    else:
+        gain, offset, gamma, matrix = _unpack_params_unit_white(result.x)
 
-    return {
+    model_dict = {
         "gain": gain,
         "offset": offset,
         "gamma": gamma,
         "matrix": matrix,
     }
+    if xyz_black is not None:
+        model_dict["xyz_black"] = xyz_black
+
+    return model_dict
 
 
 def classic_gog(
@@ -381,6 +515,7 @@ def classic_gog(
         "offset": offsets,
         "gamma": gammas,
         "matrix": matrix,
+        "xyz_black": xyz_black,
     }
 
     return gog_model
